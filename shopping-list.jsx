@@ -188,7 +188,7 @@ export default function ShoppingListApp() {
               <ShoppingBasket size={20} color="#FAF8F3" strokeWidth={2} />
             </div>
             <div>
-              <h1 style={styles.title}>Shopping</h1>
+              <h1 style={styles.title}>Carol's Shopping List</h1>
               <p style={styles.subtitle}>
                 {remainingCount === 0 ? "Nothing left to grab" : `${remainingCount} item${remainingCount === 1 ? "" : "s"} left, aisle by aisle`}
               </p>
@@ -473,19 +473,19 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    fontSize: 12.5,
+    fontSize: 18.75,
     fontWeight: 600,
     color: "#8A8578",
     marginBottom: 8,
     textTransform: "none",
   },
   aisleNum: {
-    width: 18,
-    height: 18,
-    borderRadius: 5,
+    width: 27,
+    height: 27,
+    borderRadius: 7,
     background: "#E4DFD3",
     color: "#5C5647",
-    fontSize: 11,
+    fontSize: 16.5,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -518,7 +518,7 @@ const styles = {
   },
   rowLabel: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 22.5,
     color: "#1C2620",
   },
   rowLabelChecked: {
