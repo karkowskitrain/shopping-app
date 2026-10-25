@@ -220,10 +220,10 @@ function ShoppingListApp() {
         <section style={styles.composer}>
           <textarea
             style={styles.textarea}
-            placeholder={"Type your list, one thing per line —\nmilk\nbananas\nchicken breast\npasta"}
+            placeholder={"Type items, one per line — milk, bananas, pasta..."}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            rows={3}
+            rows={1}
           />
           <button style={{ ...styles.buildBtn, opacity: draft.trim() ? 1 : 0.5 }} onClick={handleBuildList} disabled={!draft.trim()}>
             Sort onto list
