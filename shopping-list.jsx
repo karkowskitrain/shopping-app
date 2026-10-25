@@ -105,11 +105,22 @@ export default function ShoppingListApp() {
         if (res && res.value) setHistory(JSON.parse(res.value));
       } catch (e) {
         // no history yet
+      }
+      try {
+        const res = await window.storage.get("current-list", false);
+        if (res && res.value) setItems(JSON.parse(res.value));
+      } catch (e) {
+        // no saved list yet
       } finally {
         setHistoryLoaded(true);
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!historyLoaded) return;
+    window.storage.set("current-list", JSON.stringify(items), false).catch(() => {});
+  }, [items, historyLoaded]);
 
   const saveHistory = async (next) => {
     setHistory(next);
