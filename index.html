@@ -99,6 +99,7 @@ const DEFAULT_SUGGESTIONS = {
 let uid = 0;
 const nextId = () => `item-${Date.now()}-${uid++}`;
 const STORAGE_KEY = "shopping-app-category-history";
+const ITEMS_STORAGE_KEY = "shopping-app-current-list";
 
 function loadHistory() {
   try {
@@ -113,15 +114,32 @@ function persistHistory(next) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch (e) {}
 }
+function loadItems() {
+  try {
+    const raw = localStorage.getItem(ITEMS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+function persistItems(next) {
+  try {
+    localStorage.setItem(ITEMS_STORAGE_KEY, JSON.stringify(next));
+  } catch (e) {}
+}
 
 function ShoppingListApp() {
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState(() => loadItems());
   const [draft, setDraft] = useState("");
   const [activeTab, setActiveTab] = useState(null);
   const [history, setHistory] = useState(() => loadHistory());
   const [removing, setRemoving] = useState({});
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
+
+  useEffect(() => {
+    persistItems(items);
+  }, [items]);
 
   const saveHistory = (next) => {
     setHistory(next);
