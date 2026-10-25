@@ -128,6 +128,9 @@ function persistItems(next) {
   } catch (e) {}
 }
 
+const SHARE_ID_KEY = "shopping-app-share-id";
+const JSONBLOB_BASE = "https://jsonblob.com/api/jsonBlob";
+
 function ShoppingListApp() {
   const [items, setItems] = useState(() => loadItems());
   const [draft, setDraft] = useState("");
@@ -137,9 +140,108 @@ function ShoppingListApp() {
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
 
+  const [shareId, setShareId] = useState(() => localStorage.getItem(SHARE_ID_KEY) || null);
+  const [showSync, setShowSync] = useState(false);
+  const [shareInput, setShareInput] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const skipPushRef = useRef(false);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2600);
+  };
+
+  const applyRemoteItems = (remoteItems) => {
+    skipPushRef.current = true;
+    setItems(remoteItems || []);
+  };
+
+  const fetchRemote = async (id) => {
+    try {
+      const res = await fetch(`${JSONBLOB_BASE}/${id}`);
+      if (!res.ok) throw new Error("not found");
+      const data = await res.json();
+      applyRemoteItems(data.items || []);
+    } catch (e) {
+      // silent — keep whatever is currently shown, try again on next poll
+    }
+  };
+
+  // initial load: if this device already has a shared list, pull it
   useEffect(() => {
-    persistItems(items);
+    if (shareId) fetchRemote(shareId);
+  }, []);
+
+  // poll the shared list every few seconds so both devices stay in step
+  useEffect(() => {
+    if (!shareId) return;
+    const t = setInterval(() => fetchRemote(shareId), 6000);
+    return () => clearInterval(t);
+  }, [shareId]);
+
+  useEffect(() => {
+    if (skipPushRef.current) {
+      skipPushRef.current = false;
+      return;
+    }
+    if (shareId) {
+      fetch(`${JSONBLOB_BASE}/${shareId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      }).catch(() => {});
+    } else {
+      persistItems(items);
+    }
   }, [items]);
+
+  const createShare = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch(JSONBLOB_BASE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      const loc = res.headers.get("Location");
+      if (!loc) throw new Error("no id returned");
+      const id = loc.split("/").pop();
+      localStorage.setItem(SHARE_ID_KEY, id);
+      setShareId(id);
+      showToast("Shared list created — enter the code on the other device");
+    } catch (e) {
+      showToast("Couldn't create a shared list — check your connection and try again");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const joinShare = async () => {
+    const id = shareInput.trim();
+    if (!id) return;
+    setSyncing(true);
+    try {
+      const res = await fetch(`${JSONBLOB_BASE}/${id}`);
+      if (!res.ok) throw new Error("not found");
+      const data = await res.json();
+      localStorage.setItem(SHARE_ID_KEY, id);
+      setShareId(id);
+      applyRemoteItems(data.items || []);
+      showToast("Joined shared list");
+    } catch (e) {
+      showToast("Couldn't find that code — check it and try again");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const stopSync = () => {
+    localStorage.removeItem(SHARE_ID_KEY);
+    setShareId(null);
+    persistItems(items);
+    showToast("Stopped syncing — list now saved on this device only");
+  };
 
   const saveHistory = (next) => {
     setHistory(next);
@@ -215,7 +317,42 @@ function ShoppingListApp() {
               </p>
             </div>
           </div>
+          <button style={styles.syncPill} onClick={() => setShowSync((v) => !v)}>
+            {shareId ? "🔗 Synced across devices" : "📱 Not synced — tap to set up"}
+          </button>
         </header>
+
+        {showSync && (
+          <section style={styles.syncPanel}>
+            {shareId ? (
+              <>
+                <p style={styles.syncText}>
+                  This list is synced. On the other device, open this same page and enter this code:
+                </p>
+                <div style={styles.syncCode}>{shareId}</div>
+                <button style={styles.syncSecondaryBtn} onClick={stopSync}>Stop syncing</button>
+              </>
+            ) : (
+              <>
+                <p style={styles.syncText}>Set this up once, then both devices will see the same list.</p>
+                <button style={styles.syncPrimaryBtn} onClick={createShare} disabled={syncing}>
+                  {syncing ? "Setting up…" : "Create shared list (do this first, on one device)"}
+                </button>
+                <div style={styles.syncJoinRow}>
+                  <input
+                    style={styles.syncInput}
+                    placeholder="Or enter a code from the other device"
+                    value={shareInput}
+                    onChange={(e) => setShareInput(e.target.value)}
+                  />
+                  <button style={styles.syncSecondaryBtn} onClick={joinShare} disabled={syncing || !shareInput.trim()}>
+                    Join
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+        )}
 
         <section style={styles.composer}>
           <textarea
@@ -323,6 +460,14 @@ const styles = {
   logoMark: { width: 40, height: 40, borderRadius: 10, background: "#3E7350", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
   title: { margin: 0, fontSize: 22, fontWeight: 700, color: "#FAF8F3", letterSpacing: "-0.01em" },
   subtitle: { margin: "2px 0 0", fontSize: 13, color: "#C7DAC9" },
+  syncPill: { marginTop: 14, background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 999, color: "#FAF8F3", fontSize: 12.5, padding: "6px 12px", cursor: "pointer" },
+  syncPanel: { margin: "0 20px", marginTop: 14, padding: 16, background: "#F1EEE4", borderRadius: 12 },
+  syncText: { margin: "0 0 10px", fontSize: 13, color: "#5C5647", lineHeight: 1.5 },
+  syncCode: { fontSize: 20, fontWeight: 700, letterSpacing: "0.03em", color: "#2D5A3D", background: "#FFFFFF", border: "1px dashed #C9C2AC", borderRadius: 10, padding: "10px 14px", textAlign: "center", marginBottom: 10, wordBreak: "break-all" },
+  syncPrimaryBtn: { width: "100%", background: "#2D5A3D", color: "#FAF8F3", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 13.5, fontWeight: 600, cursor: "pointer" },
+  syncJoinRow: { display: "flex", gap: 8, marginTop: 10 },
+  syncInput: { flex: 1, border: "1px solid #DCD6C6", borderRadius: 10, padding: "10px 12px", fontSize: 13.5, fontFamily: "inherit" },
+  syncSecondaryBtn: { background: "#FFFFFF", border: "1px solid #DCD6C6", borderRadius: 10, padding: "10px 16px", fontSize: 13.5, fontWeight: 600, color: "#2D5A3D", cursor: "pointer" },
   composer: { padding: "18px 20px 0" },
   textarea: { width: "100%", boxSizing: "border-box", border: "1px solid #E4DFD3", borderRadius: 12, padding: "12px 14px", fontSize: 14.5, color: "#1C2620", background: "#FFFFFF", resize: "vertical", fontFamily: "inherit", lineHeight: 1.5 },
   buildBtn: { marginTop: 10, width: "100%", background: "#B8451F", color: "#FAF8F3", border: "none", borderRadius: 12, padding: "12px 0", fontSize: 15, fontWeight: 600, cursor: "pointer" },
