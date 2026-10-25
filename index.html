@@ -129,7 +129,8 @@ function persistItems(next) {
 }
 
 const SHARE_ID_KEY = "shopping-app-share-id";
-const JSONBLOB_BASE = "https://jsonblob.com/api/jsonBlob";
+const KVDB_BASE = "https://kvdb.io";
+const KVDB_KEY = "list";
 
 function ShoppingListApp() {
   const [items, setItems] = useState(() => loadItems());
@@ -157,14 +158,28 @@ function ShoppingListApp() {
     setItems(remoteItems || []);
   };
 
-  const fetchRemote = async (id) => {
+  const fetchRemote = async (bucket) => {
     try {
-      const res = await fetch(`${JSONBLOB_BASE}/${id}`);
+      const res = await fetch(`${KVDB_BASE}/${bucket}/${KVDB_KEY}`);
       if (!res.ok) throw new Error("not found");
-      const data = await res.json();
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : { items: [] };
       applyRemoteItems(data.items || []);
     } catch (e) {
+      console.error("sync fetch failed", e);
       // silent — keep whatever is currently shown, try again on next poll
+    }
+  };
+
+  const pushRemote = async (bucket, currentItems) => {
+    try {
+      await fetch(`${KVDB_BASE}/${bucket}/${KVDB_KEY}`, {
+        method: "PUT",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ items: currentItems }),
+      });
+    } catch (e) {
+      console.error("sync push failed", e);
     }
   };
 
@@ -186,11 +201,7 @@ function ShoppingListApp() {
       return;
     }
     if (shareId) {
-      fetch(`${JSONBLOB_BASE}/${shareId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
-      }).catch(() => {});
+      pushRemote(shareId, items);
     } else {
       persistItems(items);
     }
@@ -199,18 +210,16 @@ function ShoppingListApp() {
   const createShare = async () => {
     setSyncing(true);
     try {
-      const res = await fetch(JSONBLOB_BASE, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
-      });
-      const loc = res.headers.get("Location");
-      if (!loc) throw new Error("no id returned");
-      const id = loc.split("/").pop();
-      localStorage.setItem(SHARE_ID_KEY, id);
-      setShareId(id);
+      const res = await fetch(`${KVDB_BASE}/`, { method: "POST" });
+      if (!res.ok) throw new Error(`bucket create failed: ${res.status}`);
+      const bucket = (await res.text()).trim();
+      if (!bucket) throw new Error("no bucket id returned");
+      await pushRemote(bucket, items);
+      localStorage.setItem(SHARE_ID_KEY, bucket);
+      setShareId(bucket);
       showToast("Shared list created — enter the code on the other device");
     } catch (e) {
+      console.error("createShare failed", e);
       showToast("Couldn't create a shared list — check your connection and try again");
     } finally {
       setSyncing(false);
@@ -222,14 +231,16 @@ function ShoppingListApp() {
     if (!id) return;
     setSyncing(true);
     try {
-      const res = await fetch(`${JSONBLOB_BASE}/${id}`);
-      if (!res.ok) throw new Error("not found");
-      const data = await res.json();
+      const res = await fetch(`${KVDB_BASE}/${id}/${KVDB_KEY}`);
+      if (!res.ok && res.status !== 404) throw new Error(`join failed: ${res.status}`);
+      const text = res.ok ? await res.text() : "";
+      const data = text ? JSON.parse(text) : { items: [] };
       localStorage.setItem(SHARE_ID_KEY, id);
       setShareId(id);
       applyRemoteItems(data.items || []);
       showToast("Joined shared list");
     } catch (e) {
+      console.error("joinShare failed", e);
       showToast("Couldn't find that code — check it and try again");
     } finally {
       setSyncing(false);
