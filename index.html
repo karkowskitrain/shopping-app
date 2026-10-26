@@ -146,7 +146,7 @@ function ShoppingListApp() {
   const [showSync, setShowSync] = useState(false);
   const [shareInput, setShareInput] = useState("");
   const [syncing, setSyncing] = useState(false);
-  const skipPushRef = useRef(false);
+  const skipPushRef = useRef(!!shareId);
 
   const showToast = (msg) => {
     setToast(msg);
