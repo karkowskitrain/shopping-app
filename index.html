@@ -129,8 +129,9 @@ function persistItems(next) {
 }
 
 const SHARE_ID_KEY = "shopping-app-share-id";
-const KVDB_BASE = "https://kvdb.io";
-const KVDB_KEY = "list";
+const FIREBASE_BASE = "https://carols-shopping-list-default-rtdb.asia-southeast1.firebasedatabase.app";
+const listUrl = (code) => `${FIREBASE_BASE}/lists/${code}.json`;
+const genCode = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 
 function ShoppingListApp() {
   const [items, setItems] = useState(() => loadItems());
@@ -158,24 +159,23 @@ function ShoppingListApp() {
     setItems(remoteItems || []);
   };
 
-  const fetchRemote = async (bucket) => {
+  const fetchRemote = async (code) => {
     try {
-      const res = await fetch(`${KVDB_BASE}/${bucket}/${KVDB_KEY}`);
-      if (!res.ok) throw new Error("not found");
-      const text = await res.text();
-      const data = text ? JSON.parse(text) : { items: [] };
-      applyRemoteItems(data.items || []);
+      const res = await fetch(listUrl(code));
+      if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+      const data = await res.json(); // null if nothing saved yet
+      applyRemoteItems((data && data.items) || []);
     } catch (e) {
       console.error("sync fetch failed", e);
       // silent — keep whatever is currently shown, try again on next poll
     }
   };
 
-  const pushRemote = async (bucket, currentItems) => {
+  const pushRemote = async (code, currentItems) => {
     try {
-      await fetch(`${KVDB_BASE}/${bucket}/${KVDB_KEY}`, {
+      await fetch(listUrl(code), {
         method: "PUT",
-        headers: { "Content-Type": "text/plain" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items: currentItems }),
       });
     } catch (e) {
@@ -210,13 +210,10 @@ function ShoppingListApp() {
   const createShare = async () => {
     setSyncing(true);
     try {
-      const res = await fetch(`${KVDB_BASE}/`, { method: "POST" });
-      if (!res.ok) throw new Error(`bucket create failed: ${res.status}`);
-      const bucket = (await res.text()).trim();
-      if (!bucket) throw new Error("no bucket id returned");
-      await pushRemote(bucket, items);
-      localStorage.setItem(SHARE_ID_KEY, bucket);
-      setShareId(bucket);
+      const code = genCode();
+      await pushRemote(code, items);
+      localStorage.setItem(SHARE_ID_KEY, code);
+      setShareId(code);
       showToast("Shared list created — enter the code on the other device");
     } catch (e) {
       console.error("createShare failed", e);
@@ -227,17 +224,17 @@ function ShoppingListApp() {
   };
 
   const joinShare = async () => {
-    const id = shareInput.trim();
+    const id = shareInput.trim().toUpperCase();
     if (!id) return;
     setSyncing(true);
     try {
-      const res = await fetch(`${KVDB_BASE}/${id}/${KVDB_KEY}`);
-      if (!res.ok && res.status !== 404) throw new Error(`join failed: ${res.status}`);
-      const text = res.ok ? await res.text() : "";
-      const data = text ? JSON.parse(text) : { items: [] };
+      const res = await fetch(listUrl(id));
+      if (!res.ok) throw new Error(`join failed: ${res.status}`);
+      const data = await res.json();
+      if (data === null) throw new Error("code not found");
       localStorage.setItem(SHARE_ID_KEY, id);
       setShareId(id);
-      applyRemoteItems(data.items || []);
+      applyRemoteItems((data && data.items) || []);
       showToast("Joined shared list");
     } catch (e) {
       console.error("joinShare failed", e);
